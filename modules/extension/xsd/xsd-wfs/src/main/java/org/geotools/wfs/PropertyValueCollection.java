@@ -180,7 +180,7 @@ public class PropertyValueCollection extends AbstractCollection<Attribute> {
                             descriptor.isNillable(),
                             descriptor.getDefaultValue());
 
-            if (next instanceof SimpleFeature) {
+            if (next instanceof SimpleFeature || descriptor == ID_DESCRIPTOR) {
                 return factory.createAttribute(value, newDescriptor, null);
             } else {
                 return factory.createComplexAttribute(

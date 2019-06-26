@@ -36,6 +36,8 @@ import org.geotools.data.complex.filter.XPathUtil.StepList;
 import org.geotools.data.complex.spi.CustomImplementationsFinder;
 import org.geotools.factory.CommonFactoryFinder;
 import org.geotools.filter.NestedAttributeExpression;
+import org.geotools.filter.visitor.AbstractFilterVisitor;
+import org.geotools.filter.visitor.DefaultExpressionVisitor;
 import org.opengis.feature.type.AttributeDescriptor;
 import org.opengis.feature.type.Name;
 import org.opengis.filter.And;
@@ -538,7 +540,20 @@ public class UnmappingFilterVisitor implements org.opengis.filter.FilterVisitor,
             // instead of always use the default geometry from the feature type
             return filter;
         }
+        List<NamespaceSupport> namespaceContextList = new ArrayList<NamespaceSupport>();
+        DefaultExpressionVisitor dfv =
+                new DefaultExpressionVisitor() {
+                    @Override
+                    public Object visit(PropertyName expression, Object data) {
+                        if (expression.getNamespaceContext() != null)
+                            namespaceContextList.add(expression.getNamespaceContext());
+                        return expression;
+                    };
+                };
+        filter.accept(new AbstractFilterVisitor(dfv), null);
         Expression name = ff.property(propertyName);
+        if (!namespaceContextList.isEmpty())
+            name = ff.property(propertyName, namespaceContextList.get(0));
         final List sourceNames = (List) name.accept(this, null);
 
         final List combined = new ArrayList(sourceNames.size());
@@ -837,7 +852,10 @@ public class UnmappingFilterVisitor implements org.opengis.filter.FilterVisitor,
             targetXPath = mappings.getDefaultGeometryXPath();
         }
 
-        NamespaceSupport namespaces = mappings.getNamespaces();
+        NamespaceSupport namespaces =
+                expr.getNamespaceContext() == null
+                        ? mappings.getNamespaces()
+                        : expr.getNamespaceContext();
         AttributeDescriptor root = mappings.getTargetFeature();
 
         List<NestedAttributeMapping> nestedMappings = mappings.getNestedMappings();

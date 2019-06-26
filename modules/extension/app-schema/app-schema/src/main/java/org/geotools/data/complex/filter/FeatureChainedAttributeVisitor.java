@@ -86,7 +86,7 @@ public class FeatureChainedAttributeVisitor extends DefaultExpressionVisitor {
         attributes = new ArrayList<>();
 
         try {
-            walkXPath(expression.getPropertyName(), feature);
+            walkXPath(expression.getPropertyName(), feature, expression.getNamespaceContext());
         } catch (IOException e) {
             throw new RuntimeException(
                     "Exception occurred splitting XPath expression into mapping steps", e);
@@ -95,10 +95,14 @@ public class FeatureChainedAttributeVisitor extends DefaultExpressionVisitor {
         return getFeatureChainedAttributes();
     }
 
-    void walkXPath(String xpath, Feature feature) throws IOException {
+    void walkXPath(String xpath, Feature feature, NamespaceSupport pathNamespace)
+            throws IOException {
         FeatureTypeMapping currentType = rootMapping;
         StepList currentXPath =
-                XPath.steps(rootMapping.getTargetFeature(), xpath, rootMapping.getNamespaces());
+                XPath.steps(
+                        rootMapping.getTargetFeature(),
+                        xpath,
+                        pathNamespace == null ? rootMapping.getNamespaces() : pathNamespace);
         FeatureChainedAttributeDescriptor attrDescr = new FeatureChainedAttributeDescriptor();
         walkXPathRecursive(currentXPath, currentType, attrDescr, feature);
     }
@@ -114,7 +118,7 @@ public class FeatureChainedAttributeVisitor extends DefaultExpressionVisitor {
         for (NestedAttributeMapping nestedAttr : currentAttributes) {
             StepList targetXPath = nestedAttr.getTargetXPath();
 
-            if (currentXPath.startsWith(targetXPath)) {
+            if (startsWith(currentXPath, targetXPath)) {
                 if (nestedAttr.isConditional() && feature == null) {
                     logConditionalMappingFound(currentType, targetXPath);
                     // quit the search
@@ -128,7 +132,7 @@ public class FeatureChainedAttributeVisitor extends DefaultExpressionVisitor {
                         StepList nestedTypeXPath = targetXPath.clone();
                         nestedTypeXPath.add(nestedTypeStep);
 
-                        boolean xpathContainsNestedType = currentXPath.startsWith(nestedTypeXPath);
+                        boolean xpathContainsNestedType = startsWith(currentXPath, nestedTypeXPath);
                         boolean hasSimpleContent = Types.isSimpleContentType(nestedPropertyType);
 
                         // if this is feature chaining for simple content, the name of the nested
@@ -297,6 +301,10 @@ public class FeatureChainedAttributeVisitor extends DefaultExpressionVisitor {
         return conditionalMappingFound;
     }
 
+    protected boolean startsWith(StepList one, StepList other) {
+        return one.startsWith(other);
+    }
+
     /**
      * Descriptor class holding information about a feature chained attribute, i.e. an attribute
      * belonging to a feature type that is linked to a root feature type via feature chaining.
@@ -319,7 +327,7 @@ public class FeatureChainedAttributeVisitor extends DefaultExpressionVisitor {
 
         private StepList attributePath;
 
-        private FeatureChainedAttributeDescriptor() {
+        FeatureChainedAttributeDescriptor() {
             featureChain = new ArrayList<>();
         }
 

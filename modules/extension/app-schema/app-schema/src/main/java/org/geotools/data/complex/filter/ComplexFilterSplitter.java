@@ -294,7 +294,9 @@ public class ComplexFilterSplitter extends PostPreProcessFilterSplittingVisitor 
                 XPath.steps(
                         mappings.getTargetFeature(),
                         expression.getPropertyName(),
-                        this.mappings.getNamespaces());
+                        expression.getNamespaceContext() != null
+                                ? expression.getNamespaceContext()
+                                : this.mappings.getNamespaces());
 
         if (exprSteps.containsPredicate()) {
             postStack.push(expression);
@@ -309,16 +311,13 @@ public class ComplexFilterSplitter extends PostPreProcessFilterSplittingVisitor 
                     new FeatureChainedAttributeVisitor(mappings);
             nestedAttrExtractor.visit(expression, null);
 
+            FeatureChainedAttributeVisitor existsAttrExtractor = existsExtractorVisitor();
+            existsAttrExtractor.visit(expression, null);
             List<FeatureChainedAttributeDescriptor> fcAttrs =
                     nestedAttrExtractor.getFeatureChainedAttributes();
-            if (fcAttrs.size() == 0
-                    && !nestedAttrExtractor.conditionalMappingWasFound()
-                    && !FeatureChainedAttributeVisitor.isXlinkHref(exprSteps)) {
-                throw new IllegalArgumentException(
-                        String.format(
-                                "Attribute \"%s\" not found in type \"%s\"",
-                                expression, mappings.getTargetFeature().getName().toString()));
-            }
+            checkAttributeFound(
+                    expression, exprSteps, nestedAttrExtractor, existsAttrExtractor, fcAttrs);
+
             // encoding of filters on multiple nested attributes is not (yet) supported
             if (fcAttrs.size() == 1) {
                 FeatureChainedAttributeDescriptor nestedAttrDescr = fcAttrs.get(0);
@@ -397,6 +396,51 @@ public class ComplexFilterSplitter extends PostPreProcessFilterSplittingVisitor 
         }
 
         return super.visit(expression, notUsed);
+    }
+    /** Attribute error check */
+    protected void checkAttributeFound(
+            PropertyName expression,
+            StepList exprSteps,
+            FeatureChainedAttributeVisitor nestedAttrExtractor,
+            FeatureChainedAttributeVisitor existsAttrExtractor,
+            List<FeatureChainedAttributeDescriptor> fcAttrs) {
+        if (fcAttrs.size() == 0
+                && !nestedAttrExtractor.conditionalMappingWasFound()
+                && !isXlinkHRef(exprSteps)
+                && existsAttrExtractor.getFeatureChainedAttributes().isEmpty()) {
+            if (!(expression.getPropertyName().startsWith("gml")
+                    || expression.getPropertyName().endsWith(":geometry")))
+                throw new IllegalArgumentException(
+                        String.format(
+                                "Attribute \"%s\" not found in type \"%s\"",
+                                expression, mappings.getTargetFeature().getName().toString()));
+        }
+    }
+
+    protected boolean isXlinkHRef(StepList exprSteps) {
+        return FeatureChainedAttributeVisitor.isXlinkHref(exprSteps);
+    }
+
+    private FeatureChainedAttributeVisitor existsExtractorVisitor() {
+        return new FeatureChainedAttributeVisitor(mappings) {
+            @Override
+            protected boolean startsWith(StepList one, StepList other) {
+                if (other.size() > one.size()) {
+                    return false;
+                }
+                boolean result = true;
+                for (int i = 0; i < other.size(); i++) {
+                    Step thisStep = one.get(i);
+                    Step otherStep = other.get(i);
+                    if (thisStep.isIndexed() && otherStep.isIndexed()) {
+                        result = result && thisStep.equals(otherStep);
+                    } else {
+                        result = result && thisStep.equalsIgnoreIndex(otherStep);
+                    }
+                }
+                return result;
+            }
+        };
     }
 
     private void nestedAttributeSanityCheck(Filter filter) {
